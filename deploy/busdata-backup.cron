@@ -1,0 +1,4 @@
+# 수집이 끝난 뒤 DB 백업 (텔레그램으로도 전송). 평일 10:40 (express-tail 종료 후), 주말 15:10 (express-weekend 종료 후)
+# install.sh·deploy.sh 가 /etc/cron.d/busdata-backup 으로 복사한다
+40 10 * * 1-5 root bash /opt/busdata/backup.sh >> /opt/busdata/logs/backup.log 2>&1
+10 15 * * 6,0 root bash /opt/busdata/backup.sh >> /opt/busdata/logs/backup.log 2>&1

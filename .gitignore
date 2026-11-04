@@ -1,0 +1,14 @@
+# 인증키·비밀번호
+.env
+.env.*
+!.env.example
+
+target/
+logs/
+backups/
+*.log
+.idea/
+*.iml
+.vscode/
+.DS_Store
+export/

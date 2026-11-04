@@ -1,0 +1,137 @@
+spring:
+  application:
+    name: bus-collector
+  # 프로젝트 루트의 .env 를 프로퍼티로 읽는다 (systemd 에서는 EnvironmentFile 로도 주입됨)
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:busdata}?connectionTimeZone=GMT+09:00&forceConnectionTimeZoneToSession=true
+    username: ${DB_USER:bus}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 4
+  flyway:
+    enabled: true
+  jackson:
+    time-zone: Asia/Seoul
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  file:
+    name: ${LOG_DIR:logs}/collector.log
+  logback:
+    rollingpolicy:
+      max-history: 60
+  level:
+    com.yongyongthon.buscollector: INFO
+
+collector:
+  zone: Asia/Seoul
+  # true 면 기동 시 master 테이블이 비어 있는 job 의 노선/정류소 ID 변환을 자동 수행
+  init-on-startup: true
+  # 비어 있으면 /admin/**, /export 인증 없음. VM 에서는 반드시 설정
+  admin-token: ${ADMIN_TOKEN:}
+  # 일일 요약 로그 시각
+  summary-cron: "0 10 10,23 * * *"
+
+  api:
+    base-url: https://apis.data.go.kr/6410000
+    connect-timeout: 5s
+    read-timeout: 10s
+    retries: 1
+    retry-delay: 1s
+    # GBIS resultCode: 0 정상, 4 결과 없음(운행 버스 없음 등) → 둘 다 성공으로 본다
+    ok-result-codes: [0, 4]
+    paths:
+      bus-location: /buslocationservice/v2/getBusLocationListv2
+      bus-arrival: /busarrivalservice/v2/getBusArrivalListv2
+      route-list: /busrouteservice/v2/getBusRouteListv2
+      route-stations: /busrouteservice/v2/getBusRouteStationListv2
+      station-search: /busstationservice/v2/getBusStationListv2
+
+  jobs:
+    # 광역버스 평일 아침 출근 (용인 → 서울)
+    - name: express-morning
+      enabled: true
+      api-key-env: DATA_GO_KR_KEY_EXPRESS
+      daily-limit: 1000          # API 종류별 하루 호출 한도. 같은 인증키(api-key-env)를 쓰는 job 들의 호출을 합산해 비교
+      days: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY]
+      start: "06:00"
+      end: "10:00"               # 포함
+      interval-minutes: 2
+      collect: [LOCATION, ARRIVAL]
+      routes:
+        # route-id 를 직접 적으면 조회를 건너뛴다. start-station / region 은 동명 노선(고양·김포 등) 걸러내기용 '포함' 조건
+        - { name: "5000",       start-station: "남동",   region: "용인" }
+        - { name: "5001A",      start-station: "남동",   region: "용인" }
+        - { name: "5003A",      start-station: "남동",   region: "용인" }
+        - { name: "5005",       start-station: "남동",   region: "용인" }
+        - { name: "5005(거점)", start-station: "강남대", region: "용인" }
+      stations:
+        # mobile-no = 화면 표시 정류소번호. 대상 노선의 경유 정류장 목록에서 찾아 stationId 로 변환(방향 자동 보장)
+        - { mobile-no: "29399", name: "시청.용인대역" }
+        - { mobile-no: "29808", name: "동백역.성산마을서해그랑블" }
+        - { mobile-no: "29307", name: "강남대역.강남대입구" }
+        - { mobile-no: "29262", name: "기흥역6번출구" }
+        - { mobile-no: "29145", name: "상미마을.신갈오거리" }
+
+    # 10:00 직전 예측의 실제 도착을 확인하기 위해 위치만 10:30 까지 더 수집 (같은 인증키 → 한도 합산)
+    # 위치 API 하루 605 + 75 = 680회
+    - name: express-tail
+      enabled: true
+      api-key-env: DATA_GO_KR_KEY_EXPRESS
+      daily-limit: 1000
+      days: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY]
+      start: "10:02"
+      end: "10:30"
+      interval-minutes: 2
+      collect: [LOCATION]
+      routes:
+        - { name: "5000",       start-station: "남동",   region: "용인" }
+        - { name: "5001A",      start-station: "남동",   region: "용인" }
+        - { name: "5003A",      start-station: "남동",   region: "용인" }
+        - { name: "5005",       start-station: "남동",   region: "용인" }
+        - { name: "5005(거점)", start-station: "강남대", region: "용인" }
+      stations: []
+
+    # 광역버스 주말 점심 (용인 → 서울). 주말은 평일 job 이 안 돌아 같은 인증키 한도를 혼자 쓴다
+    # 하루 151주기 → 위치·도착 각 755회
+    - name: express-weekend
+      enabled: true
+      api-key-env: DATA_GO_KR_KEY_EXPRESS
+      daily-limit: 1000
+      days: [SATURDAY, SUNDAY]
+      start: "10:00"
+      end: "15:00"
+      interval-minutes: 2
+      collect: [LOCATION, ARRIVAL]
+      routes:
+        - { name: "5000",       start-station: "남동",   region: "용인" }
+        - { name: "5001A",      start-station: "남동",   region: "용인" }
+        - { name: "5003A",      start-station: "남동",   region: "용인" }
+        - { name: "5005",       start-station: "남동",   region: "용인" }
+        - { name: "5005(거점)", start-station: "강남대", region: "용인" }
+      stations:
+        - { mobile-no: "29399", name: "시청.용인대역" }
+        - { mobile-no: "29808", name: "동백역.성산마을서해그랑블" }
+        - { mobile-no: "29307", name: "강남대역.강남대입구" }
+        - { mobile-no: "29262", name: "기흥역6번출구" }
+        - { mobile-no: "29145", name: "상미마을.신갈오거리" }
+
+    # 예정: 시내버스 (다른 인증키·시간대·간격). 키 발급 후 enabled: true
+    - name: city-daytime
+      enabled: false
+      api-key-env: DATA_GO_KR_KEY_CITY
+      daily-limit: 1000
+      days: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY]
+      start: "07:00"
+      end: "19:00"
+      interval-minutes: 5
+      collect: [LOCATION]
+      routes:
+        - { name: "5",    region: "용인" }
+        - { name: "21",   region: "용인" }
+        - { name: "31-1", region: "용인" }
+      stations: []

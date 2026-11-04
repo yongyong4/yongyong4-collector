@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>버스 수집 현황</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --text: #1d2228; --muted: #6b7480;
+    --ok: #1a7f4b; --ok-bg: #e5f4ec; --warn: #a15c00; --warn-bg: #fdf1dc;
+    --bad: #b42318; --bad-bg: #fbe7e5; --idle: #5b6573; --idle-bg: #eceff2;
+    --accent: #2457c5; --accent-bg: #e8eefc; --track: #c9d0d9; --back: #8a94a1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171b; --panel: #1c2026; --line: #2c323a; --text: #e6e9ed; --muted: #97a0ab;
+      --ok: #5fd39a; --ok-bg: #173527; --warn: #f0b45a; --warn-bg: #3a2c14;
+      --bad: #ff8a80; --bad-bg: #3d1d1b; --idle: #a2abb6; --idle-bg: #262b32;
+      --accent: #7aa2ff; --accent-bg: #1f2a44; --track: #3a424c; --back: #6f7985;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 20px 16px 8px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  main { max-width: 1200px; margin: 0 auto; padding: 0 16px 40px; display: grid; gap: 16px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+  h2 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .card .title { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; }
+  .card .sub { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+  .stat { display: grid; grid-template-columns: 40px 1fr; gap: 6px 8px; font-size: 13px; }
+  .stat > span:nth-child(odd) { color: var(--muted); }
+  .bar { height: 6px; background: var(--idle-bg); border-radius: 3px; overflow: hidden; margin-top: 3px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .b-ok { color: var(--ok); background: var(--ok-bg); }
+  .b-warn { color: var(--warn); background: var(--warn-bg); }
+  .b-bad { color: var(--bad); background: var(--bad-bg); }
+  .b-idle { color: var(--idle); background: var(--idle-bg); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .seat0 { color: var(--bad); font-weight: 700; }
+  .seatlow { color: var(--warn); font-weight: 600; }
+  .muted { color: var(--muted); }
+  .err { color: var(--bad); }
+  .empty { color: var(--muted); padding: 8px 0; }
+  a { color: var(--accent); }
+  input, button { font: inherit; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--bad); border-color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+  .links { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  pre.out { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin: 10px 0 0;
+            font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; }
+  .grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+  @media (max-width: 420px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* 노선 위치 막대 */
+  .route { margin-bottom: 18px; }
+  .route h3 { font-size: 14px; margin: 0 0 2px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+  .route h3 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .lane-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .lane-label b { color: var(--text); font-weight: 600; }
+  .lane { position: relative; height: 92px; margin: 0 16px; }
+  .lane .line { position: absolute; left: 0; right: 0; top: 68px; height: 3px; border-radius: 2px; background: var(--accent); opacity: .55; }
+  .lane.back { height: 74px; }
+  .lane.back .line { top: 66px; height: 2px; background: var(--back); opacity: .5; }
+  .lane .end { position: absolute; top: 63px; width: 2px; height: 13px; background: var(--muted); }
+  .lane.back .end { top: 61px; height: 11px; }
+  .tick { position: absolute; top: 64px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+  .tick i { width: 2px; height: 10px; background: var(--text); opacity: .6; }
+  .tick span { font-size: 11px; line-height: 14px; color: var(--text); font-weight: 600; }
+  .bus { position: absolute; transform: translateX(-50%); min-width: 34px; padding: 2px 4px 3px; border-radius: 5px;
+         display: flex; flex-direction: column; align-items: center; line-height: 1.05; text-align: center;
+         color: #fff; background: var(--accent); font-variant-numeric: tabular-nums; cursor: pointer;
+         box-shadow: 0 0 0 1.5px var(--panel); z-index: 1; }
+  .bus small { font-size: 9.5px; font-weight: 500; opacity: .9; letter-spacing: .02em; }
+  .bus b { font-size: 13px; font-weight: 700; }
+  .bus::after { content: ""; position: absolute; left: 50%; bottom: -4px; transform: translateX(-50%);
+                border: 4px solid transparent; border-bottom: 0; border-top-color: var(--accent); }
+  .bus.low::after { border-top-color: var(--warn); }
+  .bus.full::after { border-top-color: var(--bad); }
+  .bus.unknown::after, .lane.back .bus::after { border-top-color: var(--back); }
+  .bus:hover { z-index: 3; }
+  .bus.sel { z-index: 4; box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--text); }
+  tr.sel td { background: var(--accent-bg); font-weight: 600; }
+  .plate { font-variant-numeric: tabular-nums; }
+  .bus.low { background: var(--warn); }
+  .bus.full { background: var(--bad); }
+  .bus.unknown { background: var(--back); }
+  .lane.back .bus { background: var(--back); opacity: .85; }
+  .legend { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 2px 12px 0; }
+  .legend b { color: var(--text); }
+  details.buses { margin: 6px 12px 0; font-size: 13px; }
+  details.buses summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-bottom: 12px; align-items: center; }
+  .chip { display: inline-block; width: 18px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
+
+  /* 사용 방법 */
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(860px, calc(100vw - 32px));
+           max-height: calc(100vh - 48px); background: var(--panel); color: var(--text); }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  .guide-head { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line);
+                display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; z-index: 1; }
+  .guide-head h2 { margin: 0; }
+  .guide-body { padding: 4px 16px 20px; }
+  .guide-body h3 { font-size: 15px; margin: 22px 0 6px; }
+  .guide-body p, .guide-body li { color: var(--text); }
+  .guide-body ul, .guide-body ol { padding-left: 20px; margin: 6px 0; }
+  .guide-body li { margin: 3px 0; }
+  .example { border: 1px dashed var(--track); border-radius: 8px; padding: 12px; margin: 8px 0; background: var(--bg); }
+  .example-tag { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-bg);
+                 border-radius: 4px; padding: 0 6px; margin-bottom: 6px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg);
+         border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  pre.code { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; font-size: 12px; overflow-x: auto; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  #timebar.past { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn) inset; }
+  #cycleTime { font-variant-numeric: tabular-nums; font-size: 16px; min-width: 48px; display: inline-block; }
+  input[type=range] { padding: 0; accent-color: var(--accent); }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--accent-bg); }
+  .live { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 10px; border-radius: 999px;
+          border: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+  .live .clock { font-size: 17px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  .live .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--idle); flex: none; }
+  .live.ok { border-color: var(--ok); }
+  .live.ok .dot { background: var(--ok); animation: pulse 1.6s ease-out infinite; }
+  .live.ok #liveText b { color: var(--ok); }
+  .live.bad { border-color: var(--bad); }
+  .live.bad .dot { background: var(--bad); }
+  .live.bad #liveText b { color: var(--bad); }
+  .live #liveText { color: var(--muted); }
+  .live #liveText b { color: var(--text); }
+  .sched { font-size: 13px; color: var(--muted); }
+  .sched b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); }
+    70% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--ok) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) { .live.ok .dot { animation: none; } }
+  .when { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 12px;
+          font-weight: 700; color: var(--accent); background: var(--accent-bg); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .when.stale { color: var(--warn); background: var(--warn-bg); }
+  .when.past { color: var(--warn); background: var(--warn-bg); }
+  .when svg { width: 12px; height: 12px; }
+  .quota { display: grid; gap: 8px; margin-bottom: 14px; }
+  .quota-row { display: grid; grid-template-columns: minmax(150px, auto) 1fr; gap: 4px 12px; align-items: center; font-size: 13px; }
+  .quota-row .label { color: var(--muted); }
+  .qbar { position: relative; height: 10px; background: var(--idle-bg); border-radius: 5px; }
+  .qbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--accent); }
+  .qbar .exp { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .7; }
+  .qbar.warn i { background: var(--warn); }
+  .qbar.bad i { background: var(--bad); }
+  .quota-text { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .quota-text b { color: var(--text); }
+  .exp-list { display: grid; gap: 6px; }
+  .exp-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+  .exp-item .name { min-width: 230px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .exp-item button { padding: 2px 10px; font-size: 12px; }
+  .zipbox { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+  .zipbox .controls { margin-top: 8px; }
+  .btnlink { display: inline-block; padding: 5px 14px; border-radius: 6px; border: 1px solid var(--line); text-decoration: none; }
+  .btnlink.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btnlink.disabled { opacity: .45; pointer-events: none; }
+  .exp-item button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #preview { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .pv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 8px; font-size: 13px; }
+  .pv-head .spacer { flex: 1; }
+  .pv-wrap { max-height: 480px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+  .pv-wrap table { font-size: 12px; }
+  .pv-wrap th { position: sticky; top: 0; background: var(--panel); z-index: 1; color: var(--text); font-weight: 600; line-height: 1.25;
+                vertical-align: bottom; box-shadow: inset 0 -1px 0 var(--line); }
+  .pv-wrap th small { display: block; color: var(--muted); font-weight: 400; font-size: 10.5px;
+                      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pv-wrap th[title] { cursor: help; }
+  .pv-wrap td { font-variant-numeric: tabular-nums; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+  .pv-wrap td.null { color: var(--muted); opacity: .6; }
+  .pv-wrap td.rn, .pv-wrap th.rn { color: var(--muted); text-align: right; }
+  .toc { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; margin: 12px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>버스 수집 현황</h1>
+  <div class="live" id="live" title="서버 시각(KST)과 수집 상태">
+    <span class="dot"></span><b class="clock" id="clock">--:--:--</b><span id="liveText">확인 중…</span>
+  </div>
+  <span class="sched" id="sched" title="켜진 수집 작업의 요일별 수집 시간"></span>
+  <span class="spacer"></span>
+  <span class="meta" id="now"></span>
+  <span class="meta"><label><input type="checkbox" id="auto" checked> 30초마다 새로고침</label></span>
+  <button id="openGuide">사용 방법</button>
+</header>
+<main>
+  <section>
+    <h2>수집 작업</h2>
+    <div class="quota" id="quota"></div>
+    <div class="cards" id="jobs"></div>
+  </section>
+
+  <section>
+    <h2>최근 14일 <small>평일 호출 수가 예상치와 같으면 빠짐없이 쌓인 것 · 날짜를 누르면 그날 기록 보기</small></h2>
+    <div class="scroll" id="daily"></div>
+  </section>
+
+  <section id="timebar">
+    <h2>보는 시점 <small id="viewLabel">실시간 — 가장 최근 수집 결과</small></h2>
+    <div class="controls">
+      <div class="seg"><button id="modeLive" class="on">실시간</button><button id="modePast">과거 보기</button></div>
+    </div>
+    <div class="controls" id="pastCtl" hidden>
+      <label>날짜 <input type="date" id="pastDate"></label>
+      <button id="prevCycle" title="이전 수집">◀</button>
+      <input type="range" id="cycleRange" min="0" max="0" value="0" style="width:min(360px,60vw)">
+      <button id="nextCycle" title="다음 수집">▶</button>
+      <b id="cycleTime">--:--</b>
+      <button id="play">재생</button>
+      <span class="muted" id="cycleInfo" style="font-size:12px"></span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section>
+      <h2>노선별 버스 위치 <small><span class="viewWhen">가장 최근 수집 기준</span> · 위 = 차량번호 끝 4자리, 아래 = 남은 좌석 · 누르면 따라가기</small></h2>
+      <div class="controls" id="followBar" hidden style="font-size:13px">
+        <span>따라가는 차량 <b class="plate" id="followPlate"></b> <span class="muted" id="followInfo"></span></span>
+        <button id="unfollow">해제</button>
+      </div>
+      <div class="chips">
+        <span><i class="chip" style="background:var(--accent)"></i>여유</span>
+        <span><i class="chip" style="background:var(--warn)"></i>10석 미만</span>
+        <span><i class="chip" style="background:var(--bad)"></i>만석</span>
+        <span><i class="chip" style="background:var(--back)"></i>회차 후 / 정보 없음</span>
+      </div>
+      <div id="locations"></div>
+    </section>
+    <section>
+      <h2>정류장 도착 예정 <small><span class="viewWhen">가장 최근 수집 기준</span> · 대상 노선만</small></h2>
+      <div id="arrivals"></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>최근 오류</h2>
+    <div class="scroll" id="errors"></div>
+  </section>
+
+  <section>
+    <h2>관리 <small>수집·변환·알림 버튼은 관리 토큰이 필요합니다 (조회·CSV 는 누구나)</small></h2>
+    <div class="controls">
+      <label>관리 토큰 <input type="password" id="token" placeholder="ADMIN_TOKEN" size="22" autocomplete="off"></label>
+    </div>
+    <div class="controls">
+      <button class="primary" id="btnCollect">지금 1회 수집</button>
+      <button class="danger" id="btnInit">ID 다시 변환</button>
+      <button id="btnAlert">텔레그램 알림 테스트</button>
+      <span class="muted" id="adminHint" style="font-size:12px"></span>
+    </div>
+    <pre class="out" id="adminOut" hidden></pre>
+  </section>
+
+  <section>
+    <h2>CSV 내보내기 <small>분석 팀용 · 미리보기로 내용을 먼저 확인 · 토큰 없이 누구나</small></h2>
+    <div class="controls">
+      <label>날짜 <input type="date" id="exportDate"></label>
+      <label><input type="checkbox" id="excel"> 엑셀용(BOM)</label>
+    </div>
+    <div class="exp-list" id="exportLinks"></div>
+    <div class="zipbox">
+      <b>기간 한 번에 받기</b> <span class="muted">일자별 CSV 를 zip 하나로 (수집 없는 날은 빠짐)</span>
+      <div class="controls">
+        <label>시작 <input type="date" id="zipFrom"></label>
+        <label>끝 <input type="date" id="zipTo"></label>
+        <button id="zipAll">전체 기간</button>
+      </div>
+      <div class="controls" id="zipTables"></div>
+      <div class="controls">
+        <a class="btnlink primary" id="zipLink" href="#">ZIP 다운로드</a>
+        <span class="muted" id="zipInfo" style="font-size:12px"></span>
+      </div>
+    </div>
+    <div id="preview" hidden>
+      <div class="pv-head">
+        <b id="pvTitle"></b><span class="muted" id="pvInfo"></span>
+        <span class="spacer"></span>
+        <button id="pvPrev">◀ 이전 100</button><button id="pvNext">다음 100 ▶</button>
+        <a id="pvDownload" href="#">CSV 다운로드</a>
+        <button id="pvClose">닫기</button>
+      </div>
+      <div class="pv-wrap" id="pvTable"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="guide">
+  <div class="guide-head">
+    <h2>사용 방법</h2>
+    <button id="closeGuide">닫기</button>
+  </div>
+  <div class="guide-body">
+    <p>이 페이지는 수집기가 <b>빠짐없이 데이터를 쌓고 있는지</b> 확인하고, 쌓인 데이터를 CSV 로 내려받는 곳입니다.
+      평일 06:00~10:00, 주말 10:00~15:00 에 2분마다 버스 위치(남은 좌석)와 정류장 도착 예정 정보를 저장합니다.</p>
+    <div class="toc">
+      <a href="#g-live">0. 상태 표시</a><a href="#g-jobs">1. 수집 작업</a><a href="#g-daily">2. 최근 14일</a><a href="#g-loc">3. 노선별 버스 위치</a>
+      <a href="#g-arr">4. 정류장 도착 예정</a><a href="#g-past">5. 과거 기록 보기</a><a href="#g-admin">6. 관리 버튼</a><a href="#g-export">7. CSV 내보내기</a>
+    </div>
+
+    <h3 id="g-live">0. 맨 위 상태 표시 — 한눈에 보기</h3>
+    <div class="example"><span class="example-tag">예시</span>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+        <div class="live ok"><span class="dot"></span><b class="clock">07:14:05</b><span id="exLive1"><b>수집 중</b> · 마지막 07:14 (방금)</span></div>
+        <div class="live"><span class="dot"></span><b class="clock">13:20:41</b><span><b>대기 중</b> · 다음 수집 내일(수) 06:00 · 마지막 3시간 20분 전</span></div>
+        <div class="live bad"><span class="dot"></span><b class="clock">07:31:12</b><span><b>지연</b> · 마지막 성공 13분 전</span></div>
+        <div class="live bad"><span class="dot"></span><b class="clock">--:--:--</b><span><b>서버 응답 없음</b></span></div>
+      </div>
+    </div>
+    <ul>
+      <li>시계는 <b>서버 시각(KST)</b> 기준으로 1초마다 갑니다. 페이지가 서버와 연결돼 있다는 표시입니다.</li>
+      <li><b>초록 점이 깜빡이면</b> 수집 시간대이고 실제로 제때 수집되고 있다는 뜻입니다. 시계만 가고 점이 회색이면 수집 시간대가 아닌 것(정상).</li>
+      <li><span class="err">빨강</span>이면 확인이 필요합니다. <b>지연</b>은 수집기가 멈췄거나 API 오류가 이어지는 상태 → 아래 최근 오류, 서버 로그 확인.
+        <b>서버 응답 없음</b>은 서버(또는 SSH 터널)가 끊긴 상태.</li>
+    </ul>
+
+    <h3 id="g-jobs">1. 수집 작업 — 지금 잘 돌고 있나?</h3>
+    <div class="example"><span class="example-tag">예시</span><div id="exJob"></div></div>
+    <ul>
+      <li><span class="badge b-ok">수집 중</span> 수집 시간대이고 최근 수집이 제때 성공함</li>
+      <li><span class="badge b-bad">지연</span> 수집 시간대인데 간격×2 이상 성공 기록이 없음 → 아래 <b>최근 오류</b> 확인, 서버 로그 확인</li>
+      <li><span class="badge b-idle">수집 시간 아님</span> 그 작업의 요일·시간대 밖 (정상)</li>
+      <li><b>위치 / 도착</b> 줄의 <code>243 / 605회</code> 는 오늘 호출 수 / 하루 예상 호출 수. 시간대가 끝나면 예상치와 같아야 정상입니다.
+        막대는 진행률, 오른쪽은 저장된 행 수와 마지막 성공 시각.</li>
+      <li>평일에는 작업 두 개가 함께 돕니다. <b>express-morning</b> 06:00~10:00 위치+도착, <b>express-tail</b> 10:02~10:30 위치만.
+        10시 직전에 "20분 뒤 도착"으로 예측된 버스가 실제로 언제 왔는지 확인하려고 위치를 30분 더 수집합니다.
+        주말(토·일)에는 <b>express-weekend</b> 10:00~15:00 위치+도착 하나만 돕니다 (점심 시간대 혼잡 확인용).</li>
+      <li>카드 위 <b>오늘 호출 한도</b> 막대는 인증키·API 별로 오늘 쓴 호출 수(재시도 포함)입니다. 같은 키를 쓰는 작업은 합산되며,
+        세로선이 오늘 예상치(평일 위치 680·도착 605, 주말 각 755)입니다. 한도 1,000 에 가까워지면 주황/빨강으로 바뀌고, 한도에 닿으면 수집기가 스스로 호출을 멈춥니다.</li>
+    </ul>
+
+    <h3 id="g-daily">2. 최근 14일 — 하루도 안 빠졌나?</h3>
+    <div class="example"><span class="example-tag">예시</span><div class="scroll" id="exDaily"></div></div>
+    <ul>
+      <li>평일 정상치: express-morning 위치·도착 각각 <b>605회</b>(121주기 × 5곳), express-tail 위치 <b>75회</b>(15주기 × 5노선). 주말 정상치: express-weekend 위치·도착 각각 <b>755회</b>(151주기 × 5곳). 예상보다 적으면 <span class="seatlow">주황 숫자</span>로 표시됩니다.</li>
+      <li>위 예시의 10/29 는 위치 호출이 590회 → 약 3주기가 빠졌다는 뜻. 그날 <b>실패</b> 수나 서버 재시작 여부를 확인하세요.</li>
+      <li>주말은 수집하지 않으므로 행이 없습니다. 수동 수집을 누르면 그날 호출 수에 10회씩 더해집니다.</li>
+    </ul>
+
+    <h3 id="g-loc">3. 노선별 버스 위치 — 버스가 어디에, 자리가 몇 석?</h3>
+    <div class="example"><span class="example-tag">예시 · 5000번</span><div id="exTrack"></div></div>
+    <ol>
+      <li><b>위 굵은 선 = 서울행</b>(기점 남동차고지 → 회차 지점 서울역). 우리가 분석하는 구간입니다. 왼쪽 끝이 기점, 오른쪽 끝이 회차 지점.</li>
+      <li><b>아래 흐린 선 = 회차 후</b>(서울역 → 용인으로 돌아오는 중). 참고용으로 회색 표시.</li>
+      <li><b>①~⑤ 눈금</b> = 수집 대상 정류장. 선 아래 범례에 이름과 노선 내 순번(#)이 있습니다. 같은 정류장은 모든 노선에서 같은 번호.</li>
+      <li><b>박스 위 작은 숫자 = 차량번호 끝 4자리</b>(예: 경기78아<b>1037</b>). 같은 번호면 같은 버스입니다.
+        박스를 누르면 그 차량에 테두리가 생기고 <b>따라가기</b> 상태가 됩니다. 과거 보기에서 ◀ ▶ 나 재생으로 넘겨도 계속 강조되어,
+        한 대가 정류장을 지나며 좌석이 줄어드는 과정을 쫓을 수 있습니다. 도착 예정 표의 같은 차량 줄도 함께 강조됩니다.</li>
+      <li><b>박스 아래 큰 숫자 = 남은 좌석</b>. 파랑은 여유, <span class="seatlow">주황</span>은 10석 미만, <span class="seat0">빨강 0</span>은 만석(정류장을 그냥 지나칠 수 있음), <code>?</code>는 좌석 정보 없음.</li>
+      <li>예시 읽기: ③ 강남대역 바로 뒤 <span class="seatlow">8</span> → 강남대역에서 많이 타서 8석 남음. ⑤ 신갈 뒤 <span class="seat0">0</span> → 고속도로 진입 전에 만석.
+        왼쪽 70·52 는 기점 근처라 아직 여유.</li>
+      <li>박스에 마우스를 올리면 차량번호·현재 정류장·좌석이 보이고, <b>버스 목록 보기</b>를 펼치면 표로 볼 수 있습니다.</li>
+      <li>버스가 하나도 없으면 "운행 중인 버스 없음" — 예: 5005(거점)은 06:40~07:20 외에는 항상 비어 있는 게 정상.</li>
+    </ol>
+
+    <h3 id="g-arr">4. 정류장 도착 예정 — 내 정류장에 언제, 몇 석으로?</h3>
+    <div class="example"><span class="example-tag">예시 · 29307 강남대역.강남대입구</span><div class="scroll" id="exArr"></div></div>
+    <ul>
+      <li>정류장마다 대상 노선의 <b>다음 버스 2대</b>(두 번째는 "(다음)")를 보여줍니다.</li>
+      <li>예시 첫 줄: 5000번이 <b>3분 뒤</b>, <b>2정류장 전</b>(동백2동행정복지센터 부근)에 있고, 지금 <span class="seatlow">6석</span> 남음.</li>
+      <li>5001A 의 "(다음)" 줄 <span class="seat0">0</span> → 두 번째로 오는 차는 이미 만석.</li>
+      <li>이 예정 시간과 위치 데이터로 계산한 실제 도착 시각을 비교해 <b>예측 오차</b>를 학습합니다.</li>
+    </ul>
+
+    <h3 id="g-past">5. 과거 기록 보기 — 그날 아침엔 어땠나?</h3>
+    <div class="example"><span class="example-tag">예시</span>
+      <div class="controls" style="margin:0">
+        <div class="seg"><button tabindex="-1">실시간</button><button class="on" tabindex="-1">과거 보기</button></div>
+        <span>날짜 <code>2026-10-28</code></span><span>◀ ━━━━●━━━━━━━━━━ ▶</span><b>07:14</b><span>재생</span>
+        <span class="muted" style="font-size:12px">38 / 121번째 수집 · 호출 10회</span>
+      </div>
+    </div>
+    <ul>
+      <li><b>보는 시점</b>에서 <b>과거 보기</b>를 누르고 날짜를 고르면, 아래 <b>노선별 버스 위치</b>와 <b>정류장 도착 예정</b>이 그 날짜의 기록으로 바뀝니다.
+        과거 보기 중에는 시점 영역 테두리가 주황색이고, 각 영역 제목에 <code>2026-10-28 (수) 07:14 기록</code> 처럼 시각이 붙습니다.</li>
+      <li>슬라이더나 ◀ ▶ 로 2분 단위 수집 시각을 넘깁니다. <b>재생</b>을 누르면 1.2초마다 다음 수집으로 넘어가며 버스가 움직이고 좌석이 줄어드는 것을 볼 수 있습니다.</li>
+      <li>예시 읽기: 07:10 → 07:14 → 07:18 로 넘기며 5000번 한 대를 따라가면, ③ 강남대역을 지나면서 좌석이 24 → 8 로, ⑤ 신갈 직전에 0 이 되는 식으로 <b>만석이 되는 정류장</b>을 눈으로 확인할 수 있습니다.</li>
+      <li><b>최근 14일</b> 표에서 날짜 줄을 눌러도 그날 기록으로 바로 이동합니다. <b>실시간</b>을 누르면 다시 최신 화면으로 돌아옵니다.</li>
+      <li>정확한 분석은 CSV 로 받아서 하세요. 이 화면은 "그날 무슨 일이 있었나" 를 빠르게 훑어보는 용도입니다.</li>
+    </ul>
+
+    <h3 id="g-admin">6. 관리 버튼</h3>
+    <ul>
+      <li><b>지금 1회 수집</b>: 시간대와 상관없이 바로 한 번 수집합니다 (위치 5회 + 도착 5회). 설치 직후 동작 확인, 설정 변경 후 테스트용.
+        몇 초 뒤 화면이 자동으로 갱신됩니다. 하루 호출 한도(API 별 1,000회)에 포함되니 남발하지 마세요.</li>
+      <li><b>ID 다시 변환</b>: 설정 파일의 노선번호·정류소번호를 API 로 routeId·stationId 로 다시 바꿔 저장합니다.
+        노선·정류장을 추가하거나 바꾼 뒤에만 쓰면 됩니다. 결과 표에 <b>다음 정류장</b>이 나오니 방향(서울행)이 맞는지 눈으로 확인하세요.</li>
+      <li><b>텔레그램 알림 테스트</b>: 설정된 텔레그램 대화방으로 테스트 메시지를 보냅니다. VM 배포 직후 알림이 오는지 확인할 때 쓰세요.</li>
+      <li>세 버튼은 서버에 <code>ADMIN_TOKEN</code> 이 설정돼 있으면 관리 토큰 칸에 입력해야 합니다. 이 브라우저에만 저장됩니다. 화면 조회와 CSV 다운로드·미리보기는 토큰 없이 됩니다.</li>
+    </ul>
+    <div class="example"><span class="example-tag">예시 · ID 다시 변환 결과</span>
+<pre class="out" style="margin:0">[express-morning] 문제 없음
+  노선 5000       routeId=228000174  서울,용인 | 남동차고지 → 서울역버스환승센터(5번승강장)(중) | 정류장 127개
+  정류소 29307  stationId=228000684  강남대역.강남대입구 | 5000 #36 다음:수원컨트리클럽, 5001A #26 다음:수원컨트리클럽 …</pre></div>
+
+    <h3 id="g-export">7. CSV 내보내기</h3>
+    <ul>
+      <li><b>미리보기</b>를 누르면 내려받지 않고 페이지 안에서 표로 봅니다(100행씩, 이전/다음으로 넘김, 전체 행 수 표시). 내용이 맞으면 같은 줄의 다운로드를 누르세요.</li>
+      <li>미리보기 머리글은 한국어 이름 아래에 <b>실제 컬럼명</b>(CSV·pandas 에서 쓰는 영문)이 작게 적혀 있습니다. 상태·코드 컬럼은 머리글에 마우스를 올리면 값의 뜻이 나옵니다.</li>
+      <li>날짜를 고르고 다운로드를 누르면 그날 데이터가 내려받아집니다. <code>route_master</code> 등 기준표는 날짜 무관 전체.</li>
+      <li>여러 날을 받을 땐 <b>기간 한 번에 받기</b>: 시작·끝 날짜와 표를 고르고 <b>ZIP 다운로드</b>를 한 번 누르면
+        <code>bus_location_2026-10-28.csv</code>, <code>bus_location_2026-10-29.csv</code> … 처럼 일자별 CSV 가 zip 하나로 받아집니다.
+        수집이 없던 날(주말 이전·공백일)은 파일이 없습니다. <b>전체 기간</b>은 첫 수집일부터 오늘까지.</li>
+      <li><b>bus_location</b> = 2분마다 운행 중인 버스마다 1행(위치·좌석), <b>bus_arrival</b> = 정류장별 도착 예정, <b>api_call_log</b> = 호출 기록(성공/실패).</li>
+      <li>엑셀에서 한글이 깨지면 <b>엑셀용(BOM)</b> 을 체크하고 다시 받으세요. pandas 는 체크하지 않은 파일이 편합니다.</li>
+      <li>두 데이터는 <code>plate_no</code>(차량번호)로 같은 버스를 연결합니다. 시각 기준은 <code>collected_at</code>.</li>
+    </ul>
+    <pre class="code">import pandas as pd
+loc = pd.read_csv("bus_location_2026-10-28.csv", parse_dates=["collected_at"])
+rs  = pd.read_csv("route_station.csv")
+# 정류장 순번 → 정류장 이름 붙이기
+loc = loc.merge(rs[["route_id", "station_seq", "station_name"]], on=["route_id", "station_seq"], how="left")
+# 버스별 좌석 변화
+loc.sort_values("collected_at").groupby(["route_name", "plate_no"])["remain_seat_cnt"].apply(list).head()</pre>
+  </div>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (v) => v == null ? "" : String(v).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const API_LABEL = { LOCATION: "위치", ARRIVAL: "도착" };
+const DAYS = { MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6, SUNDAY: 0 };
+const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
+const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫"];
+const STATE = { 0: "교차로 통과", 1: "정류소 도착", 2: "정류소 출발" };
+const openRoutes = new Set();
+
+function parseTime(s) { return s ? new Date(String(s).replace(" ", "T")) : null; }
+function hm(d) { return d ? d.toTimeString().slice(0, 5) : "-"; }
+function ago(d) {
+  if (!d) return "기록 없음";
+  const m = Math.round((Date.now() - d.getTime()) / 60000);
+  if (m < 1) return "방금";
+  if (m < 60) return m + "분 전";
+  if (m < 1440) return Math.floor(m / 60) + "시간 " + (m % 60) + "분 전";
+  return Math.floor(m / 1440) + "일 전";
+}
+function minutes(t) { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
+function inWindow(job, now) {
+  const days = (job.days || []).map(d => DAYS[d]);
+  const cur = now.getHours() * 60 + now.getMinutes();
+  return days.includes(now.getDay()) && cur >= minutes(job.start) && cur <= minutes(job.end);
+}
+// 수집 시간대 안에서 간격×2+1분 넘게 성공이 없으면 지연. 시간대 시작 직후에는 시작 시각을 기준으로 봐서 오탐을 막는다
+function isStale(job, lastOk, now) {
+  const start = new Date(now); start.setHours(...job.start.split(":").map(Number), 0, 0);
+  const ref = Math.max(lastOk ? lastOk.getTime() : 0, start.getTime());
+  return now - ref > (job.intervalMinutes * 2 + 1) * 60000;
+}
+function seatClass(n) { return n === 0 ? "seat0" : (n != null && n >= 0 && n < 10 ? "seatlow" : ""); }
+function seatText(n) { return n == null || n < 0 ? "-" : n; }
+// 수집 시각 배지: 실시간은 'HH:MM 수집 · N분 전'(5분 넘으면 주황), 과거 보기는 'MM/DD HH:MM 기록'
+const CLOCK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
+function whenBadge(collectedAt) {
+  const d = parseTime(collectedAt);
+  if (!d) return "";
+  if (typeof view !== "undefined" && view.mode === "past") {
+    const md = String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0");
+    return `<span class="when past">${CLOCK}${md} ${hm(d)} 기록</span>`;
+  }
+  const old = Date.now() - d.getTime() > 5 * 60000;
+  return `<span class="when${old ? " stale" : ""}" title="${esc(String(collectedAt).replace("T", " ").slice(0, 19))}">${CLOCK}${hm(d)} 수집 · ${ago(d)}</span>`;
+}
+function shortName(s) { return String(s || "").split(".")[0]; }
+function token() { return $("token").value.trim(); }
+async function get(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(url + " → HTTP " + r.status);
+  return r.json();
+}
+
+/* ---------- 수집 작업 카드 ---------- */
+function jobCard(job, today, last, now, forceActive) {
+  const active = job.enabled && (forceActive || inWindow(job, now));
+  let badge;
+  if (!job.enabled) badge = '<span class="badge b-idle">꺼짐</span>';
+  else if (!active) badge = '<span class="badge b-idle">수집 시간 아님</span>';
+  else {
+    const stale = job.collect.some(t => isStale(job, last[job.name + "/" + t], now));
+    badge = stale ? '<span class="badge b-bad">지연</span>' : '<span class="badge b-ok">수집 중</span>';
+  }
+  const rows = job.collect.map(t => {
+    const s = today[job.name + "/" + t] || { calls: 0, failures: 0, saved_rows: 0 };
+    const exp = job.expectedPerDay[t] || 0;
+    const pct = exp ? Math.min(100, Math.round(s.calls / exp * 100)) : 0;
+    const fail = s.failures > 0 ? ` · <span class="err">실패 ${s.failures}</span>` : "";
+    return `<span>${API_LABEL[t] || t}</span><span>${s.calls} / ${exp}회${fail} · ${Number(s.saved_rows).toLocaleString()}행
+             · 마지막 ${ago(last[job.name + "/" + t])}<div class="bar"><i style="width:${pct}%"></i></div></span>`;
+  }).join("");
+  const days = (job.days || []).map(d => DAY_KO[DAYS[d]]).join("");
+  return `<div class="card">
+    <div class="title"><span>${esc(job.name)}</span>${badge}</div>
+    <div class="sub">${days} ${job.start}~${job.end} · ${job.intervalMinutes}분 간격 · 노선 ${job.routes.length} · 정류장 ${job.stations.length}</div>
+    <div class="stat">${rows}</div></div>`;
+}
+
+function quotaHtml(rows) {
+  if (!rows.length) return "";
+  return `<div class="muted" style="font-size:12px">오늘 호출 한도 (인증키·API 별, 재시도 포함 · 세로선 = 하루 예상치)</div>` + rows.map(q => {
+    const pct = q.limit ? Math.min(100, q.used / q.limit * 100) : 0;
+    const expPct = q.limit ? Math.min(100, q.expected / q.limit * 100) : 0;
+    const level = q.used >= q.limit * 0.95 || q.expected > q.limit ? "bad" : (q.used >= q.limit * 0.8 || q.expected > q.limit * 0.9 ? "warn" : "");
+    const left = Math.max(0, q.limit - q.used);
+    return `<div class="quota-row"><span class="label">${esc(q.apiKeyEnv)} · <b style="color:var(--text)">${API_LABEL[q.apiType] || q.apiType}</b></span>
+      <div><div class="qbar ${level}"><i style="width:${pct}%"></i><span class="exp" style="left:${expPct}%"></span></div>
+      <div class="quota-text"><b>${q.used.toLocaleString()}</b> / ${q.limit.toLocaleString()}회 사용 · 남은 ${left.toLocaleString()}회 · 하루 예상 ${q.expected.toLocaleString()}회 (${esc(q.jobs.join(" + "))})</div></div></div>`;
+  }).join("");
+}
+
+function renderJobs(jobs, health) {
+  const now = new Date();
+  const today = {}, last = {};
+  for (const r of health.today) today[r.job_name + "/" + r.api_type] = r;
+  for (const r of health.lastSuccess) last[r.job_name + "/" + r.api_type] = parseTime(r.last_success_at);
+  $("jobs").innerHTML = jobs.map(j => jobCard(j, today, last, now)).join("");
+}
+
+/* ---------- 최근 14일 ---------- */
+function dailyTable(rows, exp) {
+  return `<table><thead><tr><th>날짜</th><th>job</th><th>API</th>
+    <th class="num">호출</th><th class="num">예상</th><th class="num">실패</th><th class="num">저장 행</th></tr></thead><tbody>` +
+    rows.map(r => {
+      const d = new Date(r.day + "T00:00");
+      const e = exp[r.job_name + "/" + r.api_type];
+      const short = e && r.calls < e;
+      return `<tr class="clickable" data-day="${r.day}" title="이 날짜 기록 보기"><td>${r.day} (${DAY_KO[d.getDay()]})</td><td>${esc(r.job_name)}</td><td>${API_LABEL[r.api_type] || r.api_type}</td>
+        <td class="num ${short ? "seatlow" : ""}">${r.calls}</td><td class="num muted">${e ?? "-"}</td>
+        <td class="num ${r.failures > 0 ? "err" : ""}">${r.failures}</td><td class="num">${Number(r.saved_rows).toLocaleString()}</td></tr>`;
+    }).join("") + "</tbody></table>";
+}
+
+function renderDaily(jobs, daily) {
+  if (!daily.length) { $("daily").innerHTML = '<div class="empty">아직 기록이 없습니다.</div>'; return; }
+  const exp = {};
+  for (const j of jobs) for (const [t, n] of Object.entries(j.expectedPerDay)) exp[j.name + "/" + t] = n;
+  $("daily").innerHTML = dailyTable(daily, exp);
+  $("daily").querySelectorAll("tr[data-day]").forEach(tr => tr.addEventListener("click", () => goPast(tr.dataset.day)));
+}
+
+/* ---------- 노선별 버스 위치 ---------- */
+// 가까운 버스끼리 겹치지 않게 위/아래 두 줄로 나눠 배치 (박스 폭 ≈ 막대의 8%)
+let selectedPlate = null;
+function plateTail(p) { return p ? String(p).slice(-4) : "----"; }
+function placeBuses(buses, posOf, tops) {
+  const lastPos = tops.map(() => -100);
+  return buses.slice().sort((a, b) => posOf(a) - posOf(b)).map(b => {
+    const p = posOf(b);
+    let level = lastPos.findIndex(x => p - x >= 8);
+    if (level < 0) level = lastPos.indexOf(Math.min(...lastPos));
+    lastPos[level] = p;
+    const n = b.remain_seat_cnt;
+    const cls = n == null || n < 0 ? "unknown" : n === 0 ? "full" : n < 10 ? "low" : "";
+    const label = n == null || n < 0 ? "?" : n;
+    const sel = selectedPlate && b.plate_no === selectedPlate ? " sel" : "";
+    const title = `${b.plate_no} · #${b.station_seq} ${b.station_name || ""} · ${STATE[b.state_cd] || ""} · 남은 좌석 ${label}`;
+    return `<span class="bus ${cls}${sel}" data-plate="${esc(b.plate_no)}" style="left:${p}%;top:${tops[level]}px" title="${esc(title)}"><small>${esc(plateTail(b.plate_no))}</small><b>${label}</b></span>`;
+  }).join("");
+}
+
+function trackHtml(route, buses, numberOf) {
+  const turn = route.turn_seq || route.max_seq || 1;
+  const max = route.max_seq || turn;
+  const out = buses.filter(b => b.station_seq <= turn);
+  const back = buses.filter(b => b.station_seq > turn);
+  const outPos = b => turn > 1 ? (b.station_seq - 1) / (turn - 1) * 100 : 0;
+  const backPos = b => max > turn ? (b.station_seq - turn) / (max - turn) * 100 : 0;
+  const targets = (route.targets || []).filter(t => t.seq <= turn);
+  const ticks = targets.map(t => {
+    const p = turn > 1 ? (t.seq - 1) / (turn - 1) * 100 : 0;
+    return `<span class="tick" style="left:${p}%" title="${esc(t.name)} #${t.seq}"><i></i><span>${CIRCLED[numberOf(t)] || "•"}</span></span>`;
+  }).join("");
+  const legend = targets.map(t => `<span><b>${CIRCLED[numberOf(t)] || "•"}</b> ${esc(shortName(t.name))} #${t.seq}</span>`).join("");
+  const full = buses.filter(b => b.remain_seat_cnt === 0 && b.station_seq <= turn).length;
+  const at = buses.length && buses[0].collected_at ? whenBadge(buses[0].collected_at) : "";
+
+  return `
+    <h3>${esc(route.route_name)} <small>서울행 ${out.length}대 · 회차 후 ${back.length}대${full ? ` · <span class="err">만석 ${full}대</span>` : ""}</small>${at}</h3>
+    <div class="lane-label"><span>기점 <b>${esc(shortName(route.start_station))}</b></span><span>서울행 →</span><span>회차 <b>${esc(shortName(route.turn_station))}</b></span></div>
+    <div class="lane"><div class="line"></div><span class="end" style="left:0"></span><span class="end" style="left:100%"></span>${ticks}${placeBuses(out, outPos, [32, 0])}</div>
+    <div class="legend">${legend}</div>
+    <div class="lane back"><div class="line"></div><span class="end" style="left:0"></span><span class="end" style="left:100%"></span>${placeBuses(back, backPos, [30, 0])}</div>
+    <div class="lane-label"><span>회차 후</span><span>← 용인 방향으로 돌아오는 중 (참고)</span><span>기점 도착</span></div>`;
+}
+
+function busTable(route, buses) {
+  const turn = route.turn_seq || route.max_seq;
+  return `<div class="scroll"><table><thead><tr><th>차량번호</th><th>방향</th><th>현재 정류장</th><th>상태</th><th class="num">좌석</th></tr></thead><tbody>` +
+    buses.map(b => `<tr class="${selectedPlate === b.plate_no ? "sel" : ""}" data-plate="${esc(b.plate_no)}"><td class="plate">${esc(b.plate_no)}</td><td>${b.station_seq <= turn ? "서울행" : '<span class="muted">회차 후</span>'}</td>
+      <td>#${b.station_seq} ${esc(b.station_name)}</td><td class="muted">${STATE[b.state_cd] || "-"}</td>
+      <td class="num ${seatClass(b.remain_seat_cnt)}">${seatText(b.remain_seat_cnt)}</td></tr>`).join("") +
+    "</tbody></table></div>";
+}
+
+function renderLocations(routes, rows, numberOf) {
+  if (!routes.length) { $("locations").innerHTML = '<div class="empty">대상 노선이 없습니다. 관리 → ID 다시 변환을 먼저 실행하세요.</div>'; return; }
+  const by = {};
+  for (const r of rows) (by[r.route_id] ||= []).push(r);
+  $("locations").innerHTML = routes.map(route => {
+    const buses = by[route.route_id] || [];
+    if (!buses.length) {
+      return `<div class="route"><h3>${esc(route.route_name)} <small>운행 중인 버스 없음 (최근 수집 기준)</small></h3></div>`;
+    }
+    const open = openRoutes.has(route.route_id) ? " open" : "";
+    return `<div class="route">${trackHtml(route, buses, numberOf)}
+      <details class="buses" data-route="${esc(route.route_id)}"${open}><summary>버스 목록 보기 (${buses.length}대)</summary>${busTable(route, buses)}</details></div>`;
+  }).join("");
+  document.querySelectorAll("details.buses").forEach(d => d.addEventListener("toggle", () => {
+    d.open ? openRoutes.add(d.dataset.route) : openRoutes.delete(d.dataset.route);
+  }));
+}
+
+function applySelection() {
+  document.querySelectorAll("#locations .bus[data-plate]").forEach(e => e.classList.toggle("sel", e.dataset.plate === selectedPlate));
+  document.querySelectorAll("#locations tr[data-plate], #arrivals tr[data-plate]").forEach(e => e.classList.toggle("sel", !!selectedPlate && e.dataset.plate === selectedPlate));
+  $("followBar").hidden = !selectedPlate;
+  if (!selectedPlate) return;
+  $("followPlate").textContent = selectedPlate;
+  const chip = document.querySelector(`#locations .bus[data-plate="${CSS.escape(selectedPlate)}"]`);
+  $("followInfo").textContent = chip ? "· " + chip.title.split(" · ").slice(1, 4).join(" · ") : "· 이 시점에는 운행 기록 없음";
+}
+function select(plate) {
+  selectedPlate = plate && plate !== selectedPlate ? plate : null;
+  applySelection();
+}
+["locations", "arrivals"].forEach(id => $(id).addEventListener("click", e => {
+  const el = e.target.closest("[data-plate]");
+  if (el && el.dataset.plate && !e.target.closest("summary")) select(el.dataset.plate);
+}));
+$("unfollow").addEventListener("click", () => select(null));
+
+/* ---------- 정류장 도착 예정 ---------- */
+function arrivalTable(list) {
+  return `<div class="scroll"><table><thead><tr><th>노선</th><th>차량</th><th class="num">도착</th><th class="num">남은 정류장</th><th class="num">좌석</th><th>현재 위치</th></tr></thead><tbody>
+    ${list.map(r => `<tr class="${selectedPlate && selectedPlate === r.plate_no ? "sel" : ""}" data-plate="${esc(r.plate_no)}" title="${esc(r.plate_no)}"><td>${esc(r.route_name)}${r.arrival_order === 2 ? ' <span class="muted">(다음)</span>' : ""}</td>
+      <td class="plate muted">${r.plate_no ? esc(plateTail(r.plate_no)) : "-"}</td>
+      <td class="num">${r.predict_time_min ?? "-"}분</td><td class="num">${r.location_no ?? "-"}</td>
+      <td class="num ${seatClass(r.remain_seat_cnt)}">${seatText(r.remain_seat_cnt)}</td>
+      <td class="muted">${esc(r.current_station)}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+
+function renderArrivals(rows, numberOf) {
+  if (!rows.length) {
+    const msg = view.mode === "past" ? "이 시각에는 도착정보를 수집하지 않았습니다 (도착 06:00~10:00, 위치는 10:30까지)." : "도착 예정 정보가 없습니다.";
+    $("arrivals").innerHTML = `<div class="empty">${msg}</div>`;
+    return;
+  }
+  const by = {};
+  for (const r of rows) (by[r.mobile_no + "|" + r.station_name] ||= []).push(r);
+  $("arrivals").innerHTML = Object.entries(by).map(([key, list]) => {
+    const [mobile, name] = key.split("|");
+    const no = CIRCLED[numberOf({ mobile_no: mobile })] || "";
+    return `<div class="route"><h3>${no} ${esc(mobile)} ${esc(name)} ${whenBadge(list[0].collected_at)}</h3>${arrivalTable(list)}</div>`;
+  }).join("");
+}
+
+/* ---------- 최근 오류 ---------- */
+function renderErrors(errors) {
+  if (!errors.length) { $("errors").innerHTML = '<div class="empty">최근 오류 없음</div>'; return; }
+  $("errors").innerHTML = `<table><thead><tr><th>시각</th><th>job</th><th>API</th><th>대상</th><th>코드</th><th>내용</th></tr></thead><tbody>` +
+    errors.map(e => `<tr><td>${esc(String(e.called_at).replace("T", " ").slice(0, 19))}</td><td>${esc(e.job_name)}</td><td>${esc(e.api_type)}</td>
+      <td>${esc(e.target_id)}</td><td>${esc(e.result_code)}</td><td style="white-space:normal">${esc(e.error_msg)}</td></tr>`).join("") +
+    "</tbody></table>";
+}
+
+/* ---------- 관리 ---------- */
+async function admin(path) {
+  const headers = token() ? { "X-Admin-Token": token() } : {};
+  const r = await fetch(path, { method: "POST", headers });
+  if (r.status === 401) throw new Error("관리 토큰이 없거나 틀렸습니다.");
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+function showOut(text, isErr) {
+  const o = $("adminOut");
+  o.hidden = false;
+  o.className = "out" + (isErr ? " err" : "");
+  o.textContent = text;
+}
+$("btnCollect").addEventListener("click", async () => {
+  const b = $("btnCollect");
+  b.disabled = true;
+  try {
+    const res = await admin("/admin/collect");
+    showOut(res.started.length ? `수집 시작: ${res.started.join(", ")}\n몇 초 뒤 화면이 갱신됩니다.` : "이미 수집이 진행 중입니다. 잠시 후 다시 확인하세요.");
+    setTimeout(refresh, 4000);
+    setTimeout(refresh, 10000);
+  } catch (e) { showOut(e.message, true); }
+  finally { b.disabled = false; }
+});
+$("btnAlert").addEventListener("click", async () => {
+  try {
+    const res = await admin("/admin/alert-test");
+    showOut(res.sent ? "테스트 알림을 보냈습니다. 텔레그램을 확인하세요." : "보내지 못했습니다: " + res.reason, !res.sent);
+  } catch (e) { showOut(e.message, true); }
+});
+let initArmed = null;
+$("btnInit").addEventListener("click", async () => {
+  const b = $("btnInit");
+  if (!initArmed) {
+    b.textContent = "한 번 더 누르면 실행";
+    $("adminHint").textContent = "노선·정류소 ID 를 API 로 다시 조회해 저장합니다 (5초 안에 다시 누르기)";
+    initArmed = setTimeout(() => { initArmed = null; b.textContent = "ID 다시 변환"; $("adminHint").textContent = ""; }, 5000);
+    return;
+  }
+  clearTimeout(initArmed); initArmed = null;
+  b.textContent = "변환 중…"; b.disabled = true; $("adminHint").textContent = "";
+  try {
+    const reports = await admin("/admin/init");
+    showOut(reports.map(r => `[${r.job}] ${r.problems.length ? "확인 필요 " + r.problems.length + "건" : "문제 없음"}\n` +
+      r.lines.map(l => "  " + l).join("\n") +
+      (r.problems.length ? "\n  ⚠ " + r.problems.join("\n  ⚠ ") : "")).join("\n\n"), reports.some(r => r.problems.length));
+    refresh();
+  } catch (e) { showOut(e.message, true); }
+  finally { b.textContent = "ID 다시 변환"; b.disabled = false; }
+});
+
+/* ---------- CSV 내보내기 / 미리보기 ---------- */
+const EXPORTS = [
+  { table: "bus_location", daily: true, desc: "2분마다 운행 중인 버스마다 1행 · 위치·좌석" },
+  { table: "bus_arrival", daily: true, desc: "정류장별 도착 예정" },
+  { table: "api_call_log", daily: true, desc: "API 호출 기록 (원본 제외)" },
+  { table: "route_master", daily: false, desc: "대상 노선" },
+  { table: "route_station", daily: false, desc: "노선별 경유 정류장·순번" },
+  { table: "station_master", daily: false, desc: "대상 정류장" }];
+const pv = { table: null, offset: 0, limit: 100, total: 0 };
+
+// 미리보기 머리글용 한국어 이름 [이름, 설명(마우스 올리면 표시)]. CSV 파일의 컬럼명은 영문 그대로다
+const COL_KO = {
+  id: ["번호"], call_log_id: ["호출 기록 번호", "api_call_log.id — 원본 JSON 과 연결"],
+  job_name: ["수집 작업"], api_type: ["API 종류", "LOCATION 위치 / ARRIVAL 도착 / ROUTE_LIST·ROUTE_STATIONS·STATION_SEARCH ID 변환"],
+  target_id: ["대상 ID", "노선 ID 또는 정류장 ID"], called_at: ["호출 시각"], collected_at: ["수집 시각", "분석 기준 시각 (KST)"],
+  query_time: ["API 응답 시각", "API 서버가 준 시각. 호출끼리 몇 초씩 어긋날 수 있음"],
+  http_status: ["HTTP 상태"], result_code: ["결과 코드", "0 정상 / 4 결과 없음(운행 버스 없음) / 30 인증키 미등록 / 22 한도 초과"],
+  result_msg: ["결과 메시지"], ok: ["성공", "1 성공 / 0 실패"], attempts: ["시도 횟수", "재시도 포함"], duration_ms: ["소요 시간(ms)"],
+  row_count: ["저장 행 수"], raw_json: ["원본 JSON"], raw_text: ["원본 텍스트"], error_msg: ["오류 내용"],
+  route_id: ["노선 ID"], route_name: ["노선"], plate_no: ["차량번호", "위치정보와 도착정보를 잇는 키"], veh_id: ["차량 ID"],
+  station_seq: ["정류장 순번", "노선 안에서 몇 번째 정류장인지 (route_station 과 연결)"], station_id: ["정류장 ID"],
+  state_cd: ["상태", "0 교차로 통과 / 1 정류소 도착 / 2 정류소 출발"], remain_seat_cnt: ["남은 좌석", "-1 정보 없음"],
+  low_plate: ["차량 유형", "0 일반 / 1 저상 / 2 2층 등 (API 코드)"], crowded: ["혼잡도", "API 코드"],
+  route_type_cd: ["노선 유형", "11 직행좌석 / 13 일반형시내 등"], tagless_cd: ["태그리스", "0 미지원 / 1 지원"],
+  arrival_order: ["도착 순서", "1 이번 버스 / 2 다음 버스"], predict_time_min: ["도착 예정(분)"], predict_time_sec: ["도착 예정(초)"],
+  location_no: ["남은 정류장 수"], current_station: ["현재 위치", "버스가 지금 있는 정류장"], flag: ["운행 상태", "PASS 운행 중 등"],
+  sta_order: ["정류장 순번", "이 정류장의 노선 내 순번 (bus_location.station_seq 와 같은 기준)"], route_dest_name: ["방면"],
+  region: ["지역"], start_station: ["기점"], end_station: ["종점"], company: ["관리 기관"], note: ["비고"], updated_at: ["갱신 시각"],
+  station_name: ["정류장"], mobile_no: ["정류소 번호", "정류장 표지판에 적힌 5자리 번호"], turn_yn: ["회차 지점", "Y 이면 여기서 돌아감"],
+  x: ["경도"], y: ["위도"], direction_note: ["방향 확인", "경유 노선·순번·다음 정류장"]
+};
+function colHeader(c) {
+  const [ko, desc] = COL_KO[c] || [c];
+  const title = desc ? ` title="${esc(desc)}"` : "";
+  return ko === c ? `<th>${esc(c)}</th>` : `<th${title}>${esc(ko)}<small>${esc(c)}</small></th>`;
+}
+
+function exportParams(table, extra) {
+  const e = EXPORTS.find(x => x.table === table);
+  const p = new URLSearchParams({ table, ...extra });
+  if (e && e.daily) p.set("date", $("exportDate").value);
+  return p;
+}
+function downloadUrl(table) {
+  const p = exportParams(table, {});
+  if (token()) p.set("token", token());
+  if ($("excel").checked) p.set("excel", "true");
+  return "/export?" + p.toString();
+}
+function fileName(table) {
+  const e = EXPORTS.find(x => x.table === table);
+  return table + (e.daily ? "_" + $("exportDate").value : "") + ".csv";
+}
+
+function renderExportLinks() {
+  $("exportLinks").innerHTML = EXPORTS.map(e => `
+    <div class="exp-item">
+      <span class="name">${fileName(e.table)}</span>
+      <button data-preview="${e.table}" class="${pv.table === e.table ? "on" : ""}">미리보기</button>
+      <a href="${downloadUrl(e.table)}">다운로드</a>
+      <span class="muted" style="font-size:12px">${e.desc}</span>
+    </div>`).join("");
+  if (pv.table) $("pvDownload").href = downloadUrl(pv.table);
+}
+
+/** 기간 zip: 고른 표마다 일자별 CSV. 기본은 위치·도착·노선별 정류장 */
+const ZIP_DEFAULT = ["bus_location", "bus_arrival", "route_station"];
+function renderZipTables() {
+  $("zipTables").innerHTML = EXPORTS.map(e => `<label><input type="checkbox" data-zip="${e.table}"
+    ${ZIP_DEFAULT.includes(e.table) ? "checked" : ""}> ${e.table}</label>`).join("");
+  $("zipTables").querySelectorAll("input").forEach(i => i.addEventListener("change", renderZipLink));
+}
+function renderZipLink() {
+  const from = $("zipFrom").value, to = $("zipTo").value;
+  const tables = [...$("zipTables").querySelectorAll("input:checked")].map(i => i.dataset.zip);
+  const ok = from && to && from <= to && tables.length;
+  const days = ok ? Math.round((new Date(to) - new Date(from)) / 86400000) + 1 : 0;
+  const p = new URLSearchParams({ from, to, tables: tables.join(",") });
+  if ($("excel").checked) p.set("excel", "true");
+  $("zipLink").href = ok ? "/export/zip?" + p.toString() : "#";
+  $("zipLink").classList.toggle("disabled", !ok);
+  $("zipInfo").textContent = ok ? `busdata_${from}_${to}.zip · ${days}일 · 표 ${tables.length}개` :
+    (!tables.length ? "표를 하나 이상 고르세요" : "시작일이 끝일보다 늦습니다");
+}
+async function loadPreview() {
+  const p = exportParams(pv.table, { offset: pv.offset, limit: pv.limit });
+  const headers = token() ? { "X-Admin-Token": token() } : {};
+  $("preview").hidden = false;
+  $("pvTitle").textContent = fileName(pv.table);
+  $("pvInfo").textContent = "불러오는 중…";
+  $("pvDownload").href = downloadUrl(pv.table);
+  try {
+    const r = await fetch("/export/preview?" + p.toString(), { headers, cache: "no-store" });
+    if (r.status === 401) throw new Error("관리 토큰이 없거나 틀렸습니다. 관리 영역에 토큰을 입력하세요.");
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    pv.total = d.total;
+    const from = d.total ? d.offset + 1 : 0, to = d.offset + d.rows.length;
+    $("pvInfo").textContent = `전체 ${Number(d.total).toLocaleString()}행 · ${from.toLocaleString()}–${to.toLocaleString()}행 표시 · 컬럼 ${d.columns.length}개`;
+    $("pvPrev").disabled = d.offset <= 0;
+    $("pvNext").disabled = to >= d.total;
+    $("pvTable").innerHTML = d.rows.length
+      ? `<table><thead><tr><th class="rn">#</th>${d.columns.map(colHeader).join("")}</tr></thead><tbody>` +
+        d.rows.map((row, i) => `<tr><td class="rn">${d.offset + i + 1}</td>${row.map(v => v == null
+          ? '<td class="null">null</td>'
+          : `<td title="${esc(v)}">${esc(v.length > 80 ? v.slice(0, 80) + "…" : v)}</td>`).join("")}</tr>`).join("") +
+        "</tbody></table>"
+      : `<div class="empty" style="padding:12px">이 날짜에는 데이터가 없습니다. (컬럼: ${esc(d.columns.join(", "))})</div>`;
+  } catch (e) {
+    $("pvInfo").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    $("pvTable").innerHTML = "";
+  }
+}
+
+$("exportLinks").addEventListener("click", e => {
+  const b = e.target.closest("[data-preview]");
+  if (!b) return;
+  pv.table = b.dataset.preview;
+  pv.offset = 0;
+  renderExportLinks();
+  loadPreview();
+});
+$("pvPrev").addEventListener("click", () => { pv.offset = Math.max(0, pv.offset - pv.limit); loadPreview(); });
+$("pvNext").addEventListener("click", () => { pv.offset += pv.limit; loadPreview(); });
+$("pvClose").addEventListener("click", () => { pv.table = null; $("preview").hidden = true; renderExportLinks(); });
+
+/* ---------- 정류장 번호 (설정 순서, 모든 노선 공통) ---------- */
+function makeNumberOf(jobs) {
+  const order = jobs.filter(j => j.enabled).flatMap(j => j.stations.map(s => s.split(" ")[0]));
+  const idx = {};
+  [...new Set(order)].forEach((m, i) => idx[m] = i);
+  return t => idx[String(t.mobile_no || "").trim()];
+}
+
+/* ---------- 보는 시점 (실시간 / 과거) ---------- */
+const view = { mode: "live", date: null, cycles: [], idx: 0, timer: null };
+const ctx = { routes: [], numberOf: () => undefined };
+
+function atParam() {
+  if (view.mode !== "past" || !view.cycles.length) return null;
+  return view.date + "T" + view.cycles[view.idx].t + ":00";
+}
+
+async function loadSnapshot() {
+  const at = atParam();
+  if (view.mode === "past" && !at) {
+    renderLocations(ctx.routes, [], ctx.numberOf);
+    renderArrivals([], ctx.numberOf);
+    return;
+  }
+  const q = at ? "?at=" + encodeURIComponent(at) : "";
+  const [locs, arrs] = await Promise.all([get("/api/latest/locations" + q), get("/api/latest/arrivals" + q)]);
+  renderLocations(ctx.routes, locs, ctx.numberOf);
+  renderArrivals(arrs, ctx.numberOf);
+  applySelection();
+}
+
+function updateTimebar() {
+  const past = view.mode === "past";
+  $("modeLive").classList.toggle("on", !past);
+  $("modePast").classList.toggle("on", past);
+  $("pastCtl").hidden = !past;
+  $("timebar").classList.toggle("past", past);
+  let when = "가장 최근 수집 기준";
+  if (past) {
+    const c = view.cycles[view.idx];
+    $("cycleRange").max = Math.max(0, view.cycles.length - 1);
+    $("cycleRange").value = view.idx;
+    $("cycleTime").textContent = c ? c.t : "--:--";
+    $("cycleInfo").textContent = view.cycles.length
+      ? `${view.idx + 1} / ${view.cycles.length}번째 수집 · 호출 ${c.calls}회${c.ok < c.calls ? ` (실패 ${c.calls - c.ok})` : ""}`
+      : "이 날짜에는 수집 기록이 없습니다";
+    const d = new Date(view.date + "T00:00");
+    when = c ? `${view.date} (${DAY_KO[d.getDay()]}) ${c.t} 기록` : `${view.date} 기록 없음`;
+    $("viewLabel").textContent = "과거 기록 — " + when;
+  } else {
+    $("viewLabel").textContent = "실시간 — 가장 최근 수집 결과";
+  }
+  document.querySelectorAll(".viewWhen").forEach(e => e.textContent = when);
+}
+
+async function goPast(date, keepIdx) {
+  stopPlay();
+  view.mode = "past";
+  if (date !== view.date || !keepIdx) {
+    view.date = date;
+    $("pastDate").value = date;
+    view.cycles = await get("/api/cycles?date=" + date);
+    view.idx = 0;
+  }
+  updateTimebar();
+  await loadSnapshot();
+  $("timebar").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function goLive() {
+  stopPlay();
+  view.mode = "live";
+  updateTimebar();
+  await loadSnapshot();
+}
+
+async function step(delta) {
+  if (!view.cycles.length) return false;
+  const next = Math.min(view.cycles.length - 1, Math.max(0, view.idx + delta));
+  if (next === view.idx) return false;
+  view.idx = next;
+  updateTimebar();
+  await loadSnapshot();
+  return true;
+}
+
+function stopPlay() {
+  if (view.timer) clearInterval(view.timer);
+  view.timer = null;
+  $("play").textContent = "재생";
+}
+
+$("modeLive").addEventListener("click", goLive);
+$("modePast").addEventListener("click", () => goPast(view.date || $("pastDate").value, true));
+$("pastDate").addEventListener("change", () => $("pastDate").value && goPast($("pastDate").value));
+$("prevCycle").addEventListener("click", () => { stopPlay(); step(-1); });
+$("nextCycle").addEventListener("click", () => { stopPlay(); step(1); });
+let rangeTimer = null;
+$("cycleRange").addEventListener("input", () => {
+  stopPlay();
+  view.idx = Number($("cycleRange").value);
+  updateTimebar();
+  clearTimeout(rangeTimer);
+  rangeTimer = setTimeout(loadSnapshot, 150);
+});
+$("play").addEventListener("click", () => {
+  if (view.timer) { stopPlay(); return; }
+  if (view.idx >= view.cycles.length - 1) view.idx = -1;
+  $("play").textContent = "정지";
+  const tick = async () => { if (!(await step(1))) stopPlay(); };
+  tick();
+  view.timer = setInterval(tick, 1200);
+});
+
+/* ---------- 상단 실시간 상태 (서버 시각 기준 시계 + 수집 상태) ---------- */
+const clock = { offset: 0, dead: true };
+function serverNow() { return new Date(Date.now() + clock.offset); }
+function tickClock() { $("clock").textContent = clock.dead ? "--:--:--" : serverNow().toTimeString().slice(0, 8); }
+function dayLabel(d, now) {
+  const a = new Date(now); a.setHours(0, 0, 0, 0);
+  const b = new Date(d); b.setHours(0, 0, 0, 0);
+  const diff = Math.round((b - a) / 86400000);
+  if (diff === 0) return "오늘";
+  if (diff === 1) return `내일(${DAY_KO[d.getDay()]})`;
+  return `${d.getMonth() + 1}/${d.getDate()}(${DAY_KO[d.getDay()]})`;
+}
+function setLive(cls, html) { $("live").className = "live " + cls; $("liveText").innerHTML = html; }
+
+/** 켜진 작업을 요일 묶음별로 합쳐 "평일 06:00~10:30 · 주말 10:00~15:00" 처럼 보여준다 */
+const WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
+const DAY_EN_KO = { MONDAY: "월", TUESDAY: "화", WEDNESDAY: "수", THURSDAY: "목", FRIDAY: "금", SATURDAY: "토", SUNDAY: "일" };
+function daysLabel(days) {
+  const set = [...days].sort((a, b) => Object.keys(DAY_EN_KO).indexOf(a) - Object.keys(DAY_EN_KO).indexOf(b));
+  const key = set.join(",");
+  if (key === WEEKDAYS.join(",")) return "평일";
+  if (key === "SATURDAY,SUNDAY") return "주말";
+  if (set.length === 7) return "매일";
+  return set.map(d => DAY_EN_KO[d]).join("·");
+}
+function renderSchedule(jobs) {
+  const groups = new Map();
+  for (const j of jobs.filter(j => j.enabled)) {
+    const label = daysLabel(j.days);
+    const g = groups.get(label) || { start: j.start, end: j.end };
+    if (j.start < g.start) g.start = j.start;
+    if (j.end > g.end) g.end = j.end;
+    groups.set(label, g);
+  }
+  $("sched").innerHTML = groups.size ? "수집 시간 " + [...groups].map(([label, g]) =>
+    `${esc(label)} <b>${esc(g.start)}~${esc(g.end)}</b>`).join(" · ") : "";
+}
+
+function renderLive(jobs, health) {
+  const now = serverNow();
+  const last = {};
+  for (const r of health.lastSuccess) last[r.job_name + "/" + r.api_type] = parseTime(r.last_success_at);
+  const enabled = jobs.filter(j => j.enabled);
+  const lasts = enabled.flatMap(j => j.collect.map(t => last[j.name + "/" + t])).filter(Boolean);
+  const lastAll = lasts.length ? new Date(Math.max(...lasts)) : null;
+  const active = enabled.filter(j => inWindow(j, now));
+
+  if (!enabled.length) { setLive("", "켜진 수집 작업 없음"); return; }
+  if (active.length) {
+    const staleTimes = active.flatMap(j => j.collect.filter(t => isStale(j, last[j.name + "/" + t], now)).map(t => last[j.name + "/" + t]));
+    if (staleTimes.length) {
+      const known = staleTimes.filter(Boolean);
+      const oldest = known.length ? new Date(Math.min(...known)) : null;
+      setLive("bad", `<b>지연</b> · 마지막 성공 ${oldest ? ago(oldest) : "없음"}`);
+    } else if (lastAll && now - lastAll < 3 * 60000 + 60000 * Math.max(...active.map(j => j.intervalMinutes))) {
+      setLive("ok", `<b>수집 중</b> · 마지막 ${hm(lastAll)} (${ago(lastAll)})`);
+    } else {
+      setLive("ok", `<b>수집 시작</b> · 첫 수집 대기`);
+    }
+    return;
+  }
+  const nexts = enabled.map(j => parseTime(j.nextRun)).filter(Boolean);
+  const next = nexts.length ? new Date(Math.min(...nexts)) : null;
+  setLive("", `<b>대기 중</b> · 다음 수집 ${next ? dayLabel(next, now) + " " + hm(next) : "없음"}` +
+    (lastAll ? ` · 마지막 ${ago(lastAll)}` : ""));
+}
+
+async function refresh() {
+  try {
+    const [jobs, health, daily, routes, quota] = await Promise.all([
+      get("/api/jobs"), get("/health/collect"), get("/api/daily?days=14"), get("/api/routes"), get("/api/quota")]);
+    $("quota").innerHTML = quotaHtml(quota);
+    const serverTime = parseTime(health.now);
+    if (serverTime) clock.offset = serverTime.getTime() - Date.now();
+    clock.dead = false;
+    tickClock();
+    renderLive(jobs, health);
+    renderSchedule(jobs);
+    ctx.routes = routes;
+    ctx.numberOf = makeNumberOf(jobs);
+    renderJobs(jobs, health);
+    renderDaily(jobs, daily);
+    renderErrors(health.recentErrors);
+    // 과거 보기 중에는 고른 시점을 유지한다
+    if (view.mode === "live") await loadSnapshot();
+    $("now").textContent = "갱신 " + new Date().toLocaleTimeString("ko-KR");
+  } catch (e) {
+    clock.dead = true;
+    tickClock();
+    setLive("bad", "<b>서버 응답 없음</b>");
+    $("now").innerHTML = `<span class="err">불러오기 실패: ${esc(e.message)}</span>`;
+  }
+}
+
+/* ---------- 사용 방법 예시 (실제 화면과 같은 함수로 그림) ---------- */
+function renderGuideExamples() {
+  const exJob = { name: "express-morning", enabled: true, days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+    start: "06:00", end: "10:00", intervalMinutes: 2, collect: ["LOCATION", "ARRIVAL"], routes: [1, 2, 3, 4, 5], stations: [1, 2, 3, 4, 5],
+    expectedPerDay: { LOCATION: 605, ARRIVAL: 605 } };
+  const now = new Date();
+  $("exJob").innerHTML = `<div class="cards">${jobCard(exJob,
+    { "express-morning/LOCATION": { calls: 243, failures: 0, saved_rows: 2410 }, "express-morning/ARRIVAL": { calls: 243, failures: 2, saved_rows: 3895 } },
+    { "express-morning/LOCATION": now, "express-morning/ARRIVAL": now }, now, true)}</div>`;
+
+  $("exDaily").innerHTML = dailyTable([
+    { day: "2026-10-29", job_name: "express-morning", api_type: "ARRIVAL", calls: 605, failures: 0, saved_rows: 11850 },
+    { day: "2026-10-29", job_name: "express-morning", api_type: "LOCATION", calls: 590, failures: 15, saved_rows: 6720 },
+    { day: "2026-10-28", job_name: "express-morning", api_type: "ARRIVAL", calls: 605, failures: 0, saved_rows: 12004 },
+    { day: "2026-10-28", job_name: "express-morning", api_type: "LOCATION", calls: 605, failures: 0, saved_rows: 6895 }],
+    { "express-morning/LOCATION": 605, "express-morning/ARRIVAL": 605 });
+
+  const route = { route_id: "ex", route_name: "5000", start_station: "남동차고지", turn_station: "서울역버스환승센터(5번승강장)(중)",
+    max_seq: 127, turn_seq: 64, targets: [
+      { seq: 11, name: "시청.용인대역", mobile_no: "29399" }, { seq: 22, name: "동백역.성산마을서해그랑블", mobile_no: "29808" },
+      { seq: 36, name: "강남대역.강남대입구", mobile_no: "29307" }, { seq: 38, name: "기흥역6번출구", mobile_no: "29262" },
+      { seq: 40, name: "상미마을.신갈오거리", mobile_no: "29145" }] };
+  const bus = (seq, seat, name) => ({ plate_no: "경기78아" + (1000 + seq), station_seq: seq, station_name: name, remain_seat_cnt: seat, state_cd: 2, collected_at: null });
+  const buses = [bus(4, 70, "동진마을"), bus(13, 52, "진우.늘푸른오스카빌"), bus(24, 31, "동백2동행정복지센터"),
+    bus(37, 8, "수원컨트리클럽"), bus(42, 0, "수원신갈TG(경유)"), bus(55, -1, "양재역"), bus(85, 66, "강남역")];
+  const exIdx = { "29399": 0, "29808": 1, "29307": 2, "29262": 3, "29145": 4 };
+  $("exTrack").innerHTML = `<div class="route" style="margin:0">${trackHtml(route, buses, t => exIdx[t.mobile_no])}
+    <details class="buses" open><summary>버스 목록 보기 (${buses.length}대)</summary>${busTable(route, buses)}</details></div>`;
+
+  $("exArr").innerHTML = arrivalTable([
+    { route_name: "5000", arrival_order: 1, predict_time_min: 3, location_no: 2, remain_seat_cnt: 6, current_station: "동백2동행정복지센터" },
+    { route_name: "5000", arrival_order: 2, predict_time_min: 17, location_no: 12, remain_seat_cnt: 41, current_station: "시청.용인대역" },
+    { route_name: "5001A", arrival_order: 1, predict_time_min: 1, location_no: 1, remain_seat_cnt: 14, current_station: "용인시청" },
+    { route_name: "5001A", arrival_order: 2, predict_time_min: 9, location_no: 6, remain_seat_cnt: 0, current_station: "명지대입구" }]);
+}
+
+$("openGuide").addEventListener("click", () => $("guide").showModal());
+$("closeGuide").addEventListener("click", () => $("guide").close());
+$("guide").addEventListener("click", (e) => { if (e.target === $("guide")) $("guide").close(); });
+
+try { $("token").value = localStorage.getItem("adminToken") || ""; } catch (e) {}
+$("token").addEventListener("input", () => { try { localStorage.setItem("adminToken", token()); } catch (e) {} renderExportLinks(); });
+$("exportDate").value = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+$("pastDate").value = $("exportDate").value;
+["exportDate", "excel"].forEach(id => $(id).addEventListener("change", () => {
+  renderExportLinks();
+  renderZipLink();
+  if (pv.table && id === "exportDate") { pv.offset = 0; loadPreview(); }
+}));
+// 기간 zip: 기본은 최근 7일, "전체 기간"은 최근 60일 기록 중 가장 이른 날부터 오늘까지
+$("zipTo").value = $("exportDate").value;
+$("zipFrom").value = new Date(Date.now() + 9 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
+["zipFrom", "zipTo"].forEach(id => $(id).addEventListener("change", renderZipLink));
+$("zipAll").addEventListener("click", async () => {
+  try {
+    const days = (await get("/api/daily?days=60")).map(r => r.day).sort();
+    if (days.length) $("zipFrom").value = days[0];
+  } catch (e) {}
+  $("zipTo").value = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  renderZipLink();
+});
+renderZipTables();
+renderZipLink();
+renderExportLinks();
+renderGuideExamples();
+updateTimebar();
+refresh();
+setInterval(() => { if ($("auto").checked) refresh(); }, 30000);
+setInterval(tickClock, 1000);
+</script>
+</body>
+</html>

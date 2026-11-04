@@ -1,0 +1,18 @@
+[Unit]
+Description=Yongin express bus data collector
+After=network-online.target mariadb.service
+Wants=network-online.target
+Requires=mariadb.service
+
+[Service]
+User=busdata
+WorkingDirectory=/opt/busdata
+EnvironmentFile=/opt/busdata/.env
+Environment=LOG_DIR=/opt/busdata/logs
+ExecStart=/usr/bin/java -Xms64m -Xmx256m -XX:+UseSerialGC -Duser.timezone=Asia/Seoul -jar /opt/busdata/bus-collector.jar
+Restart=always
+RestartSec=10
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
